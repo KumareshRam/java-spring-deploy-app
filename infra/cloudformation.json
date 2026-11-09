@@ -1,0 +1,383 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Spring lab: 2 CodeBuild projects, roles and immutable ECR repository; existing public GitHub fork and secret required. No EKS cluster created.",
+  "Parameters": {
+    "GitHubRepoUrl": {
+      "Type": "String",
+      "Description": "HTTPS clone URL of your public fork, containing starter files"
+    },
+    "JFrogUrl": {
+      "Type": "String",
+      "Description": "Platform base URL, e.g. https://yourtenant.jfrog.io (no /artifactory)"
+    },
+    "JFrogRepo": {
+      "Type": "String",
+      "Default": "spring-release-local"
+    },
+    "JFrogSecretArn": {
+      "Type": "String",
+      "Description": "Existing Secrets Manager ARN; secret JSON must contain access_token"
+    },
+    "BackendProjectName": {
+      "Type": "String",
+      "Default": "spring-backend-build"
+    },
+    "ImageProjectName": {
+      "Type": "String",
+      "Default": "spring-image-build"
+    },
+    "EcrRepositoryName": {
+      "Type": "String",
+      "Default": "spring-demo"
+    },
+    "TrivyVersion": {
+      "Type": "String",
+      "Default": "0.76.2"
+    },
+    "BuildImage": {
+      "Type": "String",
+      "Default": "aws/codebuild/standard:7.0",
+      "Description": "Managed Ubuntu x86 image with Python3, Docker, curl and Java Corretto17 support"
+    }
+  },
+  "Resources": {
+    "EcrRepository": {
+      "Type": "AWS::ECR::Repository",
+      "Properties": {
+        "RepositoryName": {
+          "Ref": "EcrRepositoryName"
+        },
+        "ImageTagMutability": "IMMUTABLE",
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        }
+      }
+    },
+    "BackendRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codebuild.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "BuildAccess",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${BackendProjectName}*"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "secretsmanager:GetSecretValue"
+                  ],
+                  "Resource": [
+                    {
+                      "Ref": "JFrogSecretArn"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "codebuild:CreateReportGroup",
+                    "codebuild:CreateReport",
+                    "codebuild:UpdateReport",
+                    "codebuild:BatchPutTestCases",
+                    "codebuild:BatchPutCodeCoverages"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${BackendProjectName}-*"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "BackendProject": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "Name": {
+          "Ref": "BackendProjectName"
+        },
+        "ServiceRole": {
+          "Fn::GetAtt": [
+            "BackendRole",
+            "Arn"
+          ]
+        },
+        "Artifacts": {
+          "Type": "NO_ARTIFACTS"
+        },
+        "Source": {
+          "Type": "GITHUB",
+          "Location": {
+            "Ref": "GitHubRepoUrl"
+          },
+          "BuildSpec": "buildspec-backend.yml",
+          "GitCloneDepth": 0
+        },
+        "Environment": {
+          "Type": "LINUX_CONTAINER",
+          "ComputeType": "BUILD_GENERAL1_MEDIUM",
+          "Image": {
+            "Ref": "BuildImage"
+          },
+          "PrivilegedMode": false,
+          "EnvironmentVariables": [
+            {
+              "Name": "JFROG_URL",
+              "Value": {
+                "Ref": "JFrogUrl"
+              }
+            },
+            {
+              "Name": "JFROG_REPO",
+              "Value": {
+                "Ref": "JFrogRepo"
+              }
+            },
+            {
+              "Name": "JFROG_TOKEN",
+              "Type": "SECRETS_MANAGER",
+              "Value": {
+                "Fn::Join": [
+                  "",
+                  [
+                    {
+                      "Ref": "JFrogSecretArn"
+                    },
+                    ":access_token"
+                  ]
+                ]
+              }
+            },
+            {
+              "Name": "TRIVY_VERSION",
+              "Value": {
+                "Ref": "TrivyVersion"
+              }
+            }
+          ]
+        },
+        "TimeoutInMinutes": 40,
+        "QueuedTimeoutInMinutes": 30,
+        "LogsConfig": {
+          "CloudWatchLogs": {
+            "Status": "ENABLED",
+            "GroupName": {
+              "Fn::Sub": "/aws/codebuild/${BackendProjectName}"
+            }
+          }
+        }
+      }
+    },
+    "ImageRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codebuild.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "BuildAccess",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${ImageProjectName}*"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "secretsmanager:GetSecretValue"
+                  ],
+                  "Resource": [
+                    {
+                      "Ref": "JFrogSecretArn"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:InitiateLayerUpload",
+                    "ecr:UploadLayerPart",
+                    "ecr:CompleteLayerUpload",
+                    "ecr:PutImage"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "EcrRepository",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ImageProject": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "Name": {
+          "Ref": "ImageProjectName"
+        },
+        "ServiceRole": {
+          "Fn::GetAtt": [
+            "ImageRole",
+            "Arn"
+          ]
+        },
+        "Artifacts": {
+          "Type": "NO_ARTIFACTS"
+        },
+        "Source": {
+          "Type": "GITHUB",
+          "Location": {
+            "Ref": "GitHubRepoUrl"
+          },
+          "BuildSpec": "buildspec-image.yml",
+          "GitCloneDepth": 0
+        },
+        "Environment": {
+          "Type": "LINUX_CONTAINER",
+          "ComputeType": "BUILD_GENERAL1_MEDIUM",
+          "Image": {
+            "Ref": "BuildImage"
+          },
+          "PrivilegedMode": true,
+          "EnvironmentVariables": [
+            {
+              "Name": "JFROG_URL",
+              "Value": {
+                "Ref": "JFrogUrl"
+              }
+            },
+            {
+              "Name": "JFROG_REPO",
+              "Value": {
+                "Ref": "JFrogRepo"
+              }
+            },
+            {
+              "Name": "JFROG_TOKEN",
+              "Type": "SECRETS_MANAGER",
+              "Value": {
+                "Fn::Join": [
+                  "",
+                  [
+                    {
+                      "Ref": "JFrogSecretArn"
+                    },
+                    ":access_token"
+                  ]
+                ]
+              }
+            },
+            {
+              "Name": "TRIVY_VERSION",
+              "Value": {
+                "Ref": "TrivyVersion"
+              }
+            },
+            {
+              "Name": "ECR_REPOSITORY",
+              "Value": {
+                "Ref": "EcrRepositoryName"
+              }
+            }
+          ]
+        },
+        "TimeoutInMinutes": 40,
+        "QueuedTimeoutInMinutes": 30,
+        "LogsConfig": {
+          "CloudWatchLogs": {
+            "Status": "ENABLED",
+            "GroupName": {
+              "Fn::Sub": "/aws/codebuild/${ImageProjectName}"
+            }
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "BackendProject": {
+      "Value": {
+        "Ref": "BackendProject"
+      }
+    },
+    "ImageProject": {
+      "Value": {
+        "Ref": "ImageProject"
+      }
+    },
+    "EcrUri": {
+      "Value": {
+        "Fn::GetAtt": [
+          "EcrRepository",
+          "RepositoryUri"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+# This Service is for EKS AUTO MODE. See README for other cluster types.
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-demo
+  namespace: spring-demo
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+spec:
+  type: LoadBalancer
+  loadBalancerClass: eks.amazonaws.com/nlb
+  selector:
+    app: spring-demo
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

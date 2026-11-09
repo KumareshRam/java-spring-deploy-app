@@ -1,0 +1,37 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:StartBuild",
+        "codebuild:BatchGetBuilds",
+        "codebuild:StopBuild"
+      ],
+      "Resource": [
+        "arn:aws:codebuild:ap-south-1:ACCOUNT_ID:project/spring-backend-build",
+        "arn:aws:codebuild:ap-south-1:ACCOUNT_ID:project/spring-image-build",
+        "arn:aws:codebuild:ap-south-1:ACCOUNT_ID:build/spring-backend-build:*",
+        "arn:aws:codebuild:ap-south-1:ACCOUNT_ID:build/spring-image-build:*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeCluster"
+      ],
+      "Resource": [
+        "arn:aws:eks:ap-south-1:ACCOUNT_ID:cluster/CLUSTER_NAME"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:DescribeImages"
+      ],
+      "Resource": [
+        "arn:aws:ecr:ap-south-1:ACCOUNT_ID:repository/spring-demo"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      java: corretto17
+  build:
+    commands:
+      - bash ci/backend.sh
+reports:
+  backend-tests:
+    files:
+      - '*.xml'
+    base-directory: complete/target/surefire-reports
+    file-format: JUNITXML
